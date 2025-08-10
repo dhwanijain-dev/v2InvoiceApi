@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import pdfplumber
-import fitz  # PyMuPDF
+import fitz 
 import os
 import tempfile
 from werkzeug.utils import secure_filename

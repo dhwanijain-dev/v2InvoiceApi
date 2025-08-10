@@ -20,10 +20,11 @@ safetensors
 sentencepiece
 sympy
 tokenizers
-torch+cpu
-torchaudio+cpu
-torchvision+cpu
+torch
+torchaudio
+torchvision
 tqdm
 transformers
 typing_extensions
 urllib3
+gunicorn
