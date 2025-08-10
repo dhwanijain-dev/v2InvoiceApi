@@ -356,4 +356,4 @@ def extract_pdf_data():
             os.remove(filepath)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
