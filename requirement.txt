@@ -27,4 +27,10 @@ tqdm
 transformers
 typing_extensions
 urllib3
+flask
+pdfplumber
+PyMuPDF
+pdf2image
+pytesseract
+opencv-python
 gunicorn
