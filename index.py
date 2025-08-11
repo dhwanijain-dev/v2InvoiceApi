@@ -248,16 +248,26 @@ def extract_with_donut():
 
 @app.route('/extract_invoicenet', methods=['POST'])
 def extract_with_invoicenet():
+    print("extract_invoicenet called")
     if 'file' not in request.files:
+        print("No file in request")
         return jsonify({'error': 'No file provided'}), 400
 
     file = request.files['file']
     if not file.filename.endswith('.pdf'):
+        print("File is not a PDF")
         return jsonify({'error': 'Only PDF files allowed'}), 400
 
     filepath = save_uploaded_file(file)
     if not filepath:
+        print("Failed to save file")
         return jsonify({'error': 'Failed to save file'}), 500
+
+    try:
+        print("Running OCR on PDF")
+        text, lines = run_ocr_on_pdf(filepath)
+        print("OCR complete, lines:", lines[:5])  # Print first 5 lines
+
 
     try:
         text, lines = run_ocr_on_pdf(filepath)
@@ -294,6 +304,8 @@ def extract_with_invoicenet():
 
         return jsonify(data)
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
     finally:
         if filepath and os.path.exists(filepath):
