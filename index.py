@@ -199,6 +199,12 @@ def extract_text_blocks(filepath):
         return None, []
 
 # Routes
+
+@app.route("/", methods=["GET", "HEAD"])
+def home():
+    return "Server is running", 200
+
+
 @app.route('/extract_donut', methods=['POST'])
 def extract_with_donut():
     if 'file' not in request.files:
