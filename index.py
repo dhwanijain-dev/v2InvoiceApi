@@ -263,11 +263,7 @@ def extract_with_invoicenet():
         print("Failed to save file")
         return jsonify({'error': 'Failed to save file'}), 500
 
-    try:
-        print("Running OCR on PDF")
-        text, lines = run_ocr_on_pdf(filepath)
-        print("OCR complete, lines:", lines[:5])  # Print first 5 lines
-
+    
 
     try:
         text, lines = run_ocr_on_pdf(filepath)
