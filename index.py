@@ -12,7 +12,7 @@ import cv2
 from PIL import Image
 from transformers import DonutProcessor, VisionEncoderDecoderModel
 from functools import lru_cache
-from index import app
+
 # Initialize Flask app once
 app = Flask(__name__)
 # Set tesseract path explicitly if needed
