@@ -12,10 +12,12 @@ import cv2
 from PIL import Image
 from transformers import DonutProcessor, VisionEncoderDecoderModel
 from functools import lru_cache
-
+from index import app
 # Initialize Flask app once
 app = Flask(__name__)
-
+# Set tesseract path explicitly if needed
+tesseract_cmd = os.environ.get('TESSERACT_PATH', 'tesseract')
+pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 # Load models lazily using lru_cache to avoid reloading
 @lru_cache(maxsize=1)
 def get_donut_model():
@@ -355,5 +357,8 @@ def extract_pdf_data():
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
 
+
 if __name__ == '__main__':
-    app.run(debug=False)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
