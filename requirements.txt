@@ -34,3 +34,5 @@ pdf2image
 pytesseract
 opencv-python
 gunicorn
+invoice2data
+setuptools

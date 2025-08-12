@@ -1,3 +1,4 @@
+import io
 from flask import Flask, request, jsonify
 import pdfplumber
 import fitz 
@@ -12,6 +13,7 @@ import cv2
 from PIL import Image
 from transformers import DonutProcessor, VisionEncoderDecoderModel
 from functools import lru_cache
+from invoice2data import extract_data
 
 # Initialize Flask app once
 app = Flask(__name__)
@@ -263,11 +265,9 @@ def extract_with_invoicenet():
         print("Failed to save file")
         return jsonify({'error': 'Failed to save file'}), 500
 
-    
-
     try:
         text, lines = run_ocr_on_pdf(filepath)
-        
+
         # Get column format if specified in request
         column_format = request.args.get('column_format', 'false').lower() == 'true'
         table = extract_table_from_pdf(filepath, column_format=column_format)
@@ -279,24 +279,53 @@ def extract_with_invoicenet():
             return default
 
         data = {
-            "companyName": extract_field(r"rich products|company name"),
-            "companyAddress": extract_field(r"\d{6}|address|road"),
+            "companyName": extract_field(r"company\s*name|firm\s*name|organisation|organization|inc\.?|incorporated|"
+                                            r"pvt\s*ltd|private\s*limited|limited|ltd\.?|llp|llc|co\.?|corporation|corp\.?|"
+                                            r"enterprise|enterprises|industries|industry|group|solutions|technologies|"
+                                            r"rich\s+products|trading\s+co|traders|associates|manufacturers|"
+                                            r"services\s+pvt|global\s+ltd|international|systems|engineering|"
+                                            r"consultancy|consultants|corporate\s+house"),
+            "companyAddress": extract_field(
+                                            r"address|addr\.?|location|premises|building|bldg\.?|floor|flr\.?|block|"
+                                            r"road|rd\.?|street|st\.?|avenue|ave\.?|lane|ln\.?|sector|area|"
+                                            r"colony|market|complex|circle|plaza|gali|nag(a|ar)|marg|"
+                                            r"district|city|state|zip|pincode|postal\s*code|\d{5,6}"
+                                        ),
             "phoneNumber": extract_field(r'(?:phone|ph|ph:|Ph: |tel|telephone|contact|mobile|cell|mob)[\s\.:\-]*(?:\+?\d|\(\d)'),
             "vendor": {
                 "vendorCode": extract_field(r'vendor\s*code'),
                 "nameAndAddress": extract_field(r'vendor name|consulting|corporate house')
             },
             "paymentAdvice": {
-                "paymentAdviceNo": extract_field(r'payment advice no|advice no| Payment Advice No.'),
-                "date": extract_field(r'date'),
-                "chequeNo": extract_field(r'cheque no'),
-                "bank": extract_field(r'bank|account'),
-                "accountNo": extract_field(r'account no'),
-                "paymentAmount": extract_field(r'amount'),
-                "utrNumber": extract_field(r'utr')
+                "paymentAdviceNo": extract_field(
+                    r"(?:payment\s*advice\s*(?:no|number)|advice\s*(?:no|number)|advice\s*id|"
+                    r"payment\s*ref(?:erence)?|advice\s*ref(?:erence)?)\s*[:\-]?\s*([A-Za-z0-9\/\-\_]+)"
+                ),
+                "date": extract_field(
+                    r"(?:date|invoice\s*date|payment\s*date|issue\s*date|dt\.?)\s*[:\-]?\s*"
+                    r"(\d{1,2}[\/\-\.\s]\d{1,2}[\/\-\.\s]\d{2,4}|\d{4}[\/\-\.\s]\d{1,2}[\/\-\.\s]\d{1,2})"
+                ),
+                "chequeNo": extract_field(
+                    r"(?:cheque\s*(?:no|number)|check\s*(?:no|number)|chq\s*(?:no|number))\s*[:\-]?\s*([A-Za-z0-9\-\/]+)"
+                ),
+                "bank": extract_field(
+                    r"(?:bank\s*(?:name)?|banking|account\s*name|beneficiary\s*bank)\s*[:\-]?\s*([A-Za-z0-9&\.,\-\s]+)"
+                ),
+                "accountNo": extract_field(
+                    r"(?:account\s*(?:no|number)|a\/c\s*(?:no|number)|iban|acct\s*(?:no|number))\s*[:\-]?\s*(\w+)"
+                ),
+                "paymentAmount": extract_field(
+                    r"(?:amount\s*payable|total\s*amount|amt\s*payable|payment\s*amount|amt)\s*[:\-]?\s*([\₹\$\€]?\d[\d,]*(?:\.\d{1,2})?)"
+                ),
+                "utrNumber": extract_field(
+                    r"(?:utr\s*(?:no|number)|transaction\s*(?:id|no|number)|ref(?:erence)?\s*(?:no|number))\s*[:\-]?\s*(\w+)"
+                )
             },
+
             "table": table
         }
+
+       
 
         return jsonify(data)
     except Exception as e:
@@ -370,7 +399,63 @@ def extract_pdf_data():
     finally:
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
+            
+@app.route('/ocr', methods=['POST'])
+def ocr():
+    try:
+        data = request.get_json()
+        image_data = base64.b64decode(data['image'])
+        image = Image.open(io.BytesIO(image_data))
+        text = pytesseract.image_to_string(image)
+        return jsonify({'text': text})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
+@app.route('/invoice2data',methods=['POST'])
+def invoice2data():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    try:
+        file = request.files['file']
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            file.save(tmp)
+            tmp_path = tmp.name
+        result = extract_data(tmp_path)
+        print(result)
+        return jsonify({'text': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+        
+
+@app.route('/extract_text', methods=['POST'])
+def extract_text():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if not file.filename.endswith('.pdf'):
+        return jsonify({'error': 'Only PDF files allowed'}), 400
+
+    filepath = save_uploaded_file(file)
+    if not filepath:
+        return jsonify({'error': 'Failed to save file'}), 500
+
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(filepath)
+        all_text = ""
+        for page in doc:
+            page_text = page.get_text()
+            all_text += page_text + "\n"
+        doc.close()
+        # Replace actual line breaks with literal "\n" for JSON
+        all_text = all_text.replace('\n', '\\n')
+        return jsonify({"text": all_text})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath)
 
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
