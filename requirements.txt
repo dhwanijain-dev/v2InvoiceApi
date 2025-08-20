@@ -36,3 +36,4 @@ opencv-python
 gunicorn
 invoice2data
 setuptools
+google-generativeai
