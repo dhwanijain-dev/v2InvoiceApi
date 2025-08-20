@@ -1,8 +1,7 @@
-#!/media/dhwanijain/22e8db14-d4cb-452d-87b3-92897c82a8bd/python/venv/bin/python3
-# -*- coding: utf-8 -*-
-import re
+#!/home/dhwani1606/Data/python/v2invoiceapi/venv/bin/python3
 import sys
 from invoice2data.main import main
 if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    if sys.argv[0].endswith('.exe'):
+        sys.argv[0] = sys.argv[0][:-4]
     sys.exit(main())

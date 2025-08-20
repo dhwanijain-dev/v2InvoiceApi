@@ -1,4 +1,4 @@
-#!/media/dhwanijain/22e8db14-d4cb-452d-87b3-92897c82a8bd/python/venv/bin/python3
+#!/home/dhwani1606/Data/python/v2invoiceapi/venv/bin/python3
 """A command line tool for extracting text and images from PDF and
 output it to plain text, html, xml or tags.
 """

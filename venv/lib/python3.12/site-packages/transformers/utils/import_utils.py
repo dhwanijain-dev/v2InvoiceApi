@@ -78,9 +78,14 @@ def _is_package_available(pkg_name: str, return_version: bool = False) -> Union[
                     package_exists = False
             elif pkg_name == "triton":
                 try:
-                    package_version = importlib.metadata.version("pytorch-triton")
+                    # import triton works for both linux and windows
+                    package = importlib.import_module(pkg_name)
+                    package_version = getattr(package, "__version__", "N/A")
                 except Exception:
-                    package_exists = False
+                    try:
+                        package_version = importlib.metadata.version("pytorch-triton")  # pytorch-triton
+                    except Exception:
+                        package_exists = False
             else:
                 # For packages other than "torch", don't attempt the fallback and set as not available
                 package_exists = False
@@ -238,7 +243,6 @@ _kernels_available = _is_package_available("kernels")
 _matplotlib_available = _is_package_available("matplotlib")
 _mistral_common_available = _is_package_available("mistral_common")
 _triton_available, _triton_version = _is_package_available("triton", return_version=True)
-_triton_kernels_available = _is_package_available("triton_kernels")
 
 _torch_version = "N/A"
 _torch_available = False
@@ -421,10 +425,6 @@ def is_torch_deterministic():
 
 def is_triton_available(min_version: str = TRITON_MIN_VERSION):
     return _triton_available and version.parse(_triton_version) >= version.parse(min_version)
-
-
-def is_triton_kernels_availalble():
-    return _triton_kernels_available
 
 
 def is_hadamard_available():
