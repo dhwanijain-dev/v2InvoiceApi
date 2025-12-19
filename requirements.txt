@@ -38,3 +38,4 @@ invoice2data
 setuptools
 google-generativeai
 groq
+python-dotenv
