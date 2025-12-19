@@ -1,4 +1,5 @@
 import io
+import json
 from flask import Flask, request, jsonify
 import pdfplumber
 import fitz 
@@ -14,12 +15,25 @@ from PIL import Image
 from transformers import DonutProcessor, VisionEncoderDecoderModel
 from functools import lru_cache
 from invoice2data import extract_data
+from groq import Groq
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Initialize Groq client
+groq_api_key = os.getenv("GROQ_API_KEY")
+if not groq_api_key:
+    raise ValueError("GROQ_API_KEY is not set")
+
+groq_client = Groq(api_key=groq_api_key)
 
 # Initialize Flask app once
 app = Flask(__name__)
 # Set tesseract path explicitly if needed
 tesseract_cmd = os.environ.get('TESSERACT_PATH', 'tesseract')
 pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
 # Load models lazily using lru_cache to avoid reloading
 @lru_cache(maxsize=1)
 def get_donut_model():
@@ -200,6 +214,12 @@ def extract_text_blocks(filepath):
         print(f"Text block extraction error: {str(e)}")
         return None, []
 
+def clean_json_output(text):
+    """Remove Markdown fences and extract JSON."""
+    # Remove ```json ... ``` or ``` ... ```
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    return cleaned
+
 # Routes
 
 @app.route("/", methods=["GET", "HEAD"])
@@ -325,8 +345,6 @@ def extract_with_invoicenet():
             "table": table
         }
 
-       
-
         return jsonify(data)
     except Exception as e:
         import traceback
@@ -404,6 +422,7 @@ def extract_pdf_data():
 def ocr():
     try:
         data = request.get_json()
+        import base64
         image_data = base64.b64decode(data['image'])
         image = Image.open(io.BytesIO(image_data))
         text = pytesseract.image_to_string(image)
@@ -411,7 +430,7 @@ def ocr():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/invoice2data',methods=['POST'])
+@app.route('/invoice2data', methods=['POST'])
 def invoice2data():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -425,7 +444,6 @@ def invoice2data():
         return jsonify({'text': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-        
 
 @app.route('/extract_text', methods=['POST'])
 def extract_text():
@@ -441,21 +459,90 @@ def extract_text():
         return jsonify({'error': 'Failed to save file'}), 500
 
     try:
-        import fitz  # PyMuPDF
         doc = fitz.open(filepath)
         all_text = ""
         for page in doc:
             page_text = page.get_text()
             all_text += page_text + "\n"
         doc.close()
+        
         # Replace actual line breaks with literal "\n" for JSON
         all_text = all_text.replace('\n', '\\n')
-        return jsonify({"text": all_text})
+        noisy_text = all_text
+
+        if not noisy_text:
+            return jsonify({"error": "No text provided"}), 400
+
+        prompt = f"""Convert the following noisy text into valid JSON:
+{noisy_text}
+
+Output ONLY JSON without markdown code blocks or explanations."""
+
+        # Use Groq API
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model="llama-3.3-70b-versatile",  # You can change to other models like "mixtral-8x7b-32768"
+            temperature=0.1,
+        )
+
+        raw_output = chat_completion.choices[0].message.content
+        cleaned_output = clean_json_output(raw_output)
+
+        try:
+            json_data = json.loads(cleaned_output)
+        except json.JSONDecodeError:
+            return jsonify({"error": "Model output is not valid JSON", "raw_output": raw_output}), 500
+
+        return jsonify(json_data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
+
+@app.route("/text-to-json", methods=["POST"])
+def text_to_json():
+    try:
+        data = request.get_json()
+        noisy_text = data.get("text", "")
+
+        if not noisy_text:
+            return jsonify({"error": "No text provided"}), 400
+
+        prompt = f"""Convert the following noisy text into valid JSON:
+{noisy_text}
+
+Output ONLY JSON without markdown code blocks or explanations."""
+
+        # Use Groq API
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model="llama-3.3-70b-versatile",  # You can change to other models like "mixtral-8x7b-32768"
+            temperature=0.1,
+        )
+
+        raw_output = chat_completion.choices[0].message.content
+        cleaned_output = clean_json_output(raw_output)
+
+        try:
+            json_data = json.loads(cleaned_output)
+        except json.JSONDecodeError:
+            return jsonify({"error": "Model output is not valid JSON", "raw_output": raw_output}), 500
+
+        return jsonify(json_data)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
